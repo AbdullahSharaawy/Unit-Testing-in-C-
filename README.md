@@ -129,3 +129,174 @@ public class NetworkServiceTests
 }
 
 ```
+# Unit Testing in C#: Testing Objects, IEnumerable, & Dates
+
+## System Under Test (SUT) Optimization
+
+### Key Concepts
+
+* **System Under Test (SUT):** The primary class or component that is being tested.
+* **DRY Principle:** Refactoring redundant code out of individual test methods.
+* **Global Availability:** Using the test class constructor to instantiate the SUT once per test class.
+
+### Explanation
+
+When writing unit tests, you will frequently need to create an instance of the class you are testing. "Newing up" this object inside every single test case creates redundant and cluttered code.
+
+To optimize this, you can move the SUT initialization into the constructor of your test class and assign it to a `private readonly` field. This makes the service globally available to all your test methods.
+
+```csharp
+public class NetworkServiceTests
+{
+    // The System Under Test (SUT)
+    private readonly PingService _pingService;
+
+    // Constructor initializes the SUT
+    public NetworkServiceTests()
+    {
+        _pingService = new PingService();
+    }
+
+    [Fact]
+    public void PingService_ExampleTest_ReturnsTrue()
+    {
+        // Act - No need to instantiate PingService here!
+        var result = _pingService.SomeMethod();
+
+        // Assert
+        result.Should().BeTrue();
+    }
+}
+
+```
+
+> **Callout:** Whenever you find yourself initializing the exact same object or mock across multiple test methods, move that logic into the constructor.
+
+---
+
+## Testing Dates (`DateTime`)
+
+### Key Concepts
+
+* Validating functions that return a `DateTime`.
+* Dealing with the unpredictability of `DateTime.Now`.
+* Utilizing FluentAssertions date extension methods.
+
+### Explanation
+
+Testing dates can be tricky because `DateTime.Now` is constantly changing down to the millisecond. Trying to assert an exact match will almost always fail. Instead, you should test that the returned date falls within a logical time frame.
+
+Using FluentAssertions, you can verify that the date is between a specific past date and a future date.
+
+```csharp
+[Fact]
+public void NetworkService_LastPingDate_ReturnDate()
+{
+    // Arrange
+    // (SUT already initialized in constructor)
+
+    // Act
+    var result = _pingService.LastPingDate();
+
+    // Assert
+    result.Should().BeAfter(1.January(2010));
+    result.Should().BeBefore(1.January(2030));
+}
+
+```
+
+---
+
+## Testing Objects (Reference Types)
+
+### Key Concepts
+
+* Type checking expected returns.
+* Strict Equality vs. Equivalence.
+* Verifying specific properties on returned objects.
+
+### Explanation
+
+When a function returns an object (a reference type), asserting its validity requires extra care. If you create an "expected object" and compare it to the "actual object" using basic equality, the test will fail because they are two different objects residing in different memory locations.
+
+To solve this, use FluentAssertions to verify the **type**, assert **equivalence** (value matching), or test specific properties inside the object.
+
+| Assertion Method | Usage Context | How it works |
+| --- | --- | --- |
+| `Should().Be()` | Value Types (int, string, bool) | Checks strict equality (memory reference or primitive value). |
+| `Should().BeEquivalentTo()` | Reference Types (Objects) | Compares the actual properties and values inside the objects. |
+| `Should().BeOfType<T>()` | Any Object | Confirms the returned object matches the expected class type. |
+
+```csharp
+[Fact]
+public void NetworkService_GetPingOptions_ReturnsObject()
+{
+    // Arrange
+    var expectedResult = new PingOptions
+    {
+        DontFragment = true,
+        Ttl = 1
+    };
+
+    // Act
+    var result = _pingService.GetPingOptions();
+
+    // Assert
+    // 1. Check the type first
+    result.Should().BeOfType<PingOptions>();
+
+    // 2. Check equivalence (compares property values, not memory location)
+    result.Should().BeEquivalentTo(expectedResult);
+
+    // 3. Alternatively, check individual properties
+    result.Ttl.Should().Be(1);
+    result.DontFragment.Should().BeTrue();
+}
+
+```
+
+> **Warning:** Be incredibly careful when using `.Be()` on objects! Always use `.BeEquivalentTo()` when you want to compare the properties of two reference types.
+
+---
+
+## Testing Collections (`IEnumerable`)
+
+### Key Concepts
+
+* Handling functions that return collections (Lists, Arrays, `IEnumerable`).
+* Validating the presence of specific equivalent objects.
+* Querying collections conditionally during assertions.
+
+### Explanation
+
+When your functions return an `IEnumerable` (like a list of recent actions), you are testing a collection of objects. Similar to testing individual objects, you cannot use strict equality.
+
+Instead, you use collection-specific assertions to ensure the collection contains the expected data or meets certain internal conditions.
+
+```csharp
+[Fact]
+public void NetworkService_MostRecentPings_ReturnsIEnumerable()
+{
+    // Arrange
+    var expectedPing = new PingOptions
+    {
+        DontFragment = true,
+        Ttl = 1
+    };
+
+    // Act
+    var result = _pingService.MostRecentPings();
+
+    // Assert
+    // Verify the collection contains an object with values matching expectedPing
+    result.Should().ContainEquivalentOf(expectedPing);
+
+    // Verify the collection contains AT LEAST one item where DontFragment is true
+    result.Should().Contain(x => x.DontFragment == true);
+}
+
+```
+
+> **Callout:** If a test fails, do not hesitate to use breakpoints and debug the test runner to inspect exactly what your `IEnumerable` or object is returning.
+> 
+>
