@@ -1,4 +1,4 @@
-# Unit Testing in C# with xUnit & Fluent Assertions
+# Unit Testing in C#: xUnit & Fluent Assertions
 
 ## Key Concepts
 
