@@ -300,3 +300,120 @@ public void NetworkService_MostRecentPings_ReturnsIEnumerable()
 > **Callout:** If a test fails, do not hesitate to use breakpoints and debug the test runner to inspect exactly what your `IEnumerable` or object is returning.
 > 
 >
+# Unit Testing in C#: Mocking Testing with FakeItEasy
+
+## Key Concepts
+
+* **Abstractions & Dependency Injection**: Designing code with interfaces to decouple components and enable testability.
+* **The Purpose of Mocking**: Isolating code by simulating the behavior of complex dependencies (like databases or APIs) to ensure test consistency.
+* **FakeItEasy Framework**: A robust, easy-to-use mocking framework for .NET that simplifies creating fake objects without complex setup.
+* **Creating Fakes (`A.Fake<T>`)**: Dynamically generating a mock implementation of an interface to pass into your classes.
+* **Controlling Behavior (`A.CallTo()`)**: Dictating exactly what a mocked method should return during a specific test execution.
+
+## Explanation
+
+### 1. Why Do We Need Mocking?
+
+* **Isolation:** Unit tests must evaluate a single function's logic, independent of its external dependencies (e.g., repositories, external APIs).
+* **Consistency:** Real databases change constantly. If a test relies on actual database records, it becomes flaky. Mocks guarantee the exact same data is returned every single time.
+* **Speed & Safety:** Mocks execute entirely in memory without touching disk or network layers, keeping test suites blazing fast and preventing accidental data mutations.
+
+> **Crucial Rule of Unit Testing:** You never want your unit tests to hit the actual database or execute deep into the "roots" of your application's architecture. If a test touches a live database, it crosses into the realm of **Integration Testing**, defeating the purpose of a unit test.
+
+---
+
+### 2. Unit Testing vs. Integration Testing
+
+| Feature | Unit Testing | Integration / End-to-End Testing |
+| --- | --- | --- |
+| **Scope** | Tests a single unit of work in total isolation. | Tests the interaction between multiple combined components. |
+| **Dependencies** | Uses **Mocks** and **Fakes** for external layers. | Connects to **real** databases, networks, or file systems. |
+| **Consistency** | Highly predictable; data is strictly controlled. | Subject to external state changes and environment issues. |
+
+---
+
+### 3. Setting Up the Abstraction
+
+To use a mocking framework effectively, your code must rely on abstractions (Interfaces) injected via the constructor (Dependency Injection). You cannot easily mock static classes, so decoupling your software is mandatory.
+
+```csharp
+// 1. The Abstraction (The Interface)
+public interface IDNS
+{
+    bool SendDNS();
+}
+
+// 2. The Service under test
+public class NetworkService
+{
+    private readonly IDNS _dns;
+
+    // Dependency Injection makes this class mockable
+    public NetworkService(IDNS dns)
+    {
+        _dns = dns;
+    }
+
+    public string SendPing()
+    {
+        // This function relies on an external dependency
+        var dnsSuccess = _dns.SendDNS();
+        
+        if (dnsSuccess)
+        {
+            return "Ping sent";
+        }
+        
+        return "Failed ping not sent";
+    }
+}
+
+```
+
+---
+
+### 4. Implementing FakeItEasy in the Test
+
+If we run a test without providing a mock, the interface methods will lack an implementation and return default values (like `false` for booleans), causing our test logic to fail prematurely.
+
+FakeItEasy intercepts the execution, prevents it from hitting any real underlying implementation, and returns exactly what we instruct it to.
+
+```csharp
+using FakeItEasy;
+using Xunit;
+
+public class NetworkServiceTests
+{
+    private readonly NetworkService _networkService;
+    private readonly IDNS _dns;
+
+    public NetworkServiceTests()
+    {
+        // Step 1: Create a fake object from the interface
+        _dns = A.Fake<IDNS>();
+        
+        // Step 2: Inject the fake object into the service
+        _networkService = new NetworkService(_dns);
+    }
+
+    [Fact]
+    public void NetworkService_SendPing_ReturnsSuccessMessage()
+    {
+        // Arrange: Intercept the method call and force it to return true
+        A.CallTo(() => _dns.SendDNS()).Returns(true);
+
+        // Act: Execute the real method on our service
+        var result = _networkService.SendPing();
+
+        // Assert: Validate the logic based on our mocked behavior
+        Assert.Equal("Ping sent", result);
+    }
+}
+
+```
+
+### 5. Step-by-Step Mocking Workflow Summary
+
+* **`A.Fake<T>()`**: Generates a dummy object that fulfills the structural contract of `T` (the interface).
+* **Injection**: Pass the generated dummy into the class constructor of the unit you are testing.
+* **`A.CallTo(() => fake.Method()).Returns(value)`**: The magic step. It instructs the mocking framework to "blow away" the actual execution and return a predefined value, ensuring the parent function has the required simulated data to proceed.
